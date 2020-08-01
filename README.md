@@ -12,6 +12,7 @@ I have run agaisnt 50 nodes hitting each of the 50 five time (instances).
 
 Running more that 7 instances does seem to cause issues.
 
+```
 Usage of ./pollenTester:
   -collision
         Test collisions
@@ -23,4 +24,4 @@ Usage of ./pollenTester:
         Valid node for initial transactions (default "http://161.35.154.87:8080")
   -txns int
         Number of transactions to run (default 20)
-        
+```        
