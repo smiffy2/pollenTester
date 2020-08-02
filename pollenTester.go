@@ -24,11 +24,11 @@ import (
 
 func main() {
 
-	nbrNodes := flag.Int("nbrNodes",5,"Number of nodes you want to test against")
+	nbrNodes := flag.Int("nbrNodes",50,"Number of nodes you want to test against")
 	instances := flag.Int("inst",5,"Number of tests against each node")
 	myNode := flag.String("node","http://161.35.154.87:8080","Valid node for initial transactions")
 	collision := flag.Bool("collision",false,"Test collisions")
-	txns := flag.Int("txns",20,"Number of transactions to run")
+	txns := flag.Int("txns",50,"Number of transactions to run")
 
 	flag.Parse()
 
@@ -39,7 +39,7 @@ func main() {
 
 	//nodeList := []string{"http://161.35.154.87:8080","https://node.naerd.tech:443","http://94.130.96.130:8080","http://37.97.145.239:8080","http://159.69.144.242:8080","http://88.99.190.9:8080"}
 
-	wc := wallet.NewWebConnector(*myNode, http.Client{Timeout: 90 * time.Second})
+	wc := wallet.NewWebConnector(*myNode, http.Client{Timeout: 120 * time.Second})
 	status, err:=wc.ServerStatus()
 
 	if err != nil || status.Synced == false {
@@ -124,14 +124,14 @@ func getSomeNodes(url string,numberOfNodes int) []string {
 }
 
 
-func createTransaction(from *wallet.Output, to walletaddr.Address) *transaction.Transaction {
+func createTransaction(txn transaction.OutputID, amt int64, to walletaddr.Address) *transaction.Transaction {
 
-	txOutputID := transaction.NewOutputID(from.Address, from.TransactionID)
+	//txOutputID := transaction.NewOutputID(from.Address, from.TransactionID)
         tx := transaction.New(
-        	transaction.NewInputs(txOutputID),
+        	transaction.NewInputs(txn),
 		transaction.NewOutputs(map[valueAddr.Address][]*balance.Balance{
 		to.Address : {
-			{Value: int64(from.Balances[balance.ColorIOTA]), Color: balance.ColorIOTA},
+			{Value: amt, Color: balance.ColorIOTA},
 		},
 	}))
 	return tx
@@ -174,8 +174,9 @@ func testPollen(url string, fromWallet *walletseed.Seed, toWallet *walletseed.Se
 
 	defer wg.Done()
 	
-	var txnCount, failedTxnCount  int
-	wc := wallet.NewWebConnector(url, http.Client{Timeout: 90 * time.Second})
+	var txnCount, failedTxnCount, unconfirmedCount int
+	//wc := wallet.NewWebConnector(url, http.Client{Timeout: 90 * time.Second})
+	api := client.NewGoShimmerAPI(url, http.Client{Timeout: 120 * time.Second})
 
 	fromAddr := fromWallet.Address(index)
 	toAddr := toWallet.Address(index)
@@ -184,35 +185,57 @@ func testPollen(url string, fromWallet *walletseed.Seed, toWallet *walletseed.Se
 
 	start := time.Now()
 	for txnCount < txns {
-		unspent,_ := wc.UnspentOutputs(fromAddr,toAddr)
-		for _, address := range unspent {
-			for _, output := range address {
+		utxos,_ := api.GetUnspentOutputs([]string{fromAddr.String(),toAddr.String()})
+		for _, unspent := range utxos.UnspentOutputs {
+		   	for _, output := range unspent.OutputIDs {
 				if output.InclusionState.Confirmed == true {
 					fmt.Printf("%v,%s\n",dataOutput,time.Since(start).String())
+					start = time.Now()
 					dataOutput = ""
+
+					spentTxnID,_ :=  transaction.OutputIDFromBase58(output.ID)
+					//inTxnID,err := transaction.IDFromBase58(output.ID)
 					var txn *transaction.Transaction
-					if output.Address == fromAddr.Address {
-						txn = createTransaction(output,toAddr)
+					if unspent.Address == fromAddr.Address.String() {
+						txnOutputID := transaction.NewOutputID(fromAddr.Address, spentTxnID.TransactionID())
+						txn = createTransaction(txnOutputID,output.Balances[0].Value,toAddr)
         					txn = txn.Sign(signaturescheme.ED25519(*fromWallet.KeyPair(index)))
 					} else {
-						txn = createTransaction(output,fromAddr)
+						txnOutputID := transaction.NewOutputID(toAddr.Address, spentTxnID.TransactionID())
+						txn = createTransaction(txnOutputID,output.Balances[0].Value,fromAddr)
         					txn = txn.Sign(signaturescheme.ED25519(*toWallet.KeyPair(index)))
 					}
-					start = time.Now()
-					err := wc.SendTransaction(txn)
-					dataOutput = url + "," + fromAddr.String() + "," + time.Since(start).String()
-					start = time.Now()
-					if err != nil {
+					txnID,err := api.SendTransaction(txn.Bytes())
+					if err != nil { 
         					fmt.Printf("Error from send transaction = %v\n",err)
-						err1 := wc.SendTransaction(txn)
+						_,err1 := api.SendTransaction(txn.Bytes())
 						if err1 != nil {
+							failedTxnCount++
         						fmt.Printf("Error from send transaction = %v\n",err1)
 						}
-						failedTxnCount++
 					}
 					txnCount++
+					dataOutput = url + "," + txnID + "," + time.Since(start).String()
+					start = time.Now()
+				} else {
+					// Unconfirmed so send a data txn.
+					unconfirmedCount++
+					if unconfirmedCount > 100  {
+						fmt.Printf("Unconfirmed txn for more that 100 seconds, please check address %v",unspent.Address)
+						fmt.Printf("%v : Transactions sent = %v, of whcih %v failed\n",url,txnCount,failedTxnCount)
+						return
+					}
+
+					//dataStartTime := time.Now()
+					//msgOut := "Txn " + output.ID +  "is unconfirmed"
+					//msgID, err := api.Data([]byte(msgOut))
+					//if err != nil {
+					//	fmt.Println("Unable to send data message")
+					//}
+					//fmt.Printf("Data Message sent with id = %v, it took %s\n",msgID,time.Since(dataStartTime))
 				}
 			}
+		   
 		}
 		time.Sleep(1 * time.Second)	
 	}
