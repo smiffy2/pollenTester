@@ -24,7 +24,7 @@ import (
 
 func main() {
 
-	nbrNodes := flag.Int("nbrNodes",50,"Number of nodes you want to test against")
+	nbrNodes := flag.Int("nbrNodes",40,"Number of nodes you want to test against")
 	instances := flag.Int("inst",5,"Number of tests against each node")
 	myNode := flag.String("node","http://161.35.154.87:8080","Valid node for initial transactions")
 	collision := flag.Bool("collision",false,"Test collisions")
@@ -189,6 +189,7 @@ func testPollen(url string, fromWallet *walletseed.Seed, toWallet *walletseed.Se
 		for _, unspent := range utxos.UnspentOutputs {
 		   	for _, output := range unspent.OutputIDs {
 				if output.InclusionState.Confirmed == true {
+					unconfirmedCount = 0
 					fmt.Printf("%v,%s\n",dataOutput,time.Since(start).String())
 					start = time.Now()
 					dataOutput = ""
@@ -222,7 +223,7 @@ func testPollen(url string, fromWallet *walletseed.Seed, toWallet *walletseed.Se
 					unconfirmedCount++
 					if unconfirmedCount > 100  {
 						fmt.Printf("Unconfirmed txn for more that 100 seconds, please check address %v",unspent.Address)
-						fmt.Printf("%v : Transactions sent = %v, of whcih %v failed\n",url,txnCount,failedTxnCount)
+						fmt.Printf("%v : Transactions between %v and %v: sent = %v, of whcih %v failed\n",url,fromAddr,toAddr,txnCount,failedTxnCount)
 						return
 					}
 
@@ -239,5 +240,5 @@ func testPollen(url string, fromWallet *walletseed.Seed, toWallet *walletseed.Se
 		}
 		time.Sleep(1 * time.Second)	
 	}
-	fmt.Printf("%v : Transactions sent = %v, of whcih %v failed\n",url,txnCount,failedTxnCount)
+	fmt.Printf("%v : Transactions between %v and %v: sent = %v, of whcih %v failed\n",url,fromAddr,toAddr,txnCount,failedTxnCount)
 }

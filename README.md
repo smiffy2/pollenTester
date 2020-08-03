@@ -2,7 +2,7 @@
 
 Sends value transactions to any number of nodes in the network
 
-git clone this repo, go build pollenTester.go and run executable. This should not be run on a goShimmer node.
+git clone this repo, go build pollenTester.go and run executable. It seems you will need gcc installed. This should not be run on a goShimmer node.
 
 The program will search the network for the required number of nodes that are in sync and api is open on 8080.
 
